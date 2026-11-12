@@ -1,0 +1,19 @@
+{
+  "domain": "iaqualink_tcx",
+  "name": "AquaLink TCX",
+  "codeowners": [
+    "@eaceaser"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/eaceaser/ha-iaqualink-tcx",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/eaceaser/ha-iaqualink-tcx/issues",
+  "requirements": [
+    "iaqualink@git+https://github.com/flz/iaqualink-py.git@565b93d019077007a88bca57f5b2a253332be929"
+  ],
+  "version": "0.1.0",
+  "loggers": [
+    "iaqualink"
+  ]
+}
