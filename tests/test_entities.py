@@ -77,12 +77,12 @@ async def test_controller_availability_policy(acquisition, status):
     assert TcxDiagnostic(acquisition, "stream").available
 
 
-async def test_stale_disconnect_and_unobserved_session_fields(acquisition):
+async def test_quiet_disconnect_and_unobserved_session_fields(acquisition):
     item = entities(acquisition)["water_temperature"]
     acquisition.client.last_state = time.monotonic() - 121
-    assert not item.available
-    assert item.native_value is None
-    assert TcxDiagnostic(acquisition, "stream").native_value == "stale"
+    assert item.available
+    assert item.native_value == 0
+    assert TcxDiagnostic(acquisition, "stream").native_value == "quiet"
     acquisition.client.last_state = time.monotonic()
     acquisition.client.stream_connected = False
     assert not item.available

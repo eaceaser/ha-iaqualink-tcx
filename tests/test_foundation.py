@@ -1,16 +1,106 @@
 import asyncio
 import logging
+import time
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from iaqualink.const import AQUALINK_LOGIN_URL
 
 from custom_components.iaqualink_tcx import async_setup_entry, async_unload_entry
-from custom_components.iaqualink_tcx.client import discover
+from custom_components.iaqualink_tcx.client import ShadowSuperseded, discover
 from custom_components.iaqualink_tcx.config_flow import TcxConfigFlow
 from tests.conftest import CREDENTIALS, SERIAL, STATE, frame
+
+
+async def test_long_quiet_session_retains_state_without_rest_or_resubscribe(acquisition, cloud):
+    c = acquisition
+    last_state = time.monotonic() - 86400
+    c.client.last_state = last_state
+    c.system._ws_last_update = time.time() - 86400
+    # A stale cloud shadow must not replace the state obtained over this socket.
+    cloud.state = {**STATE, "water": {"value": 999, "us": 1}}
+    requests = len(cloud.requests)
+    for _ in range(3):
+        await c.async_refresh()
+        assert c.equipment_available
+    assert not c.client.stream_fresh
+    assert c.client.last_state == last_state  # Refresh is not a new physical sample.
+    assert len(cloud.requests) == requests
+    assert cloud.sockets == 1
+    assert len(cloud.sent) == 1
+    assert cloud.connect_options[0]["keepalive_ping_interval_seconds"] == 30
+    assert float(c.system.devices["water"].value) == 0
+    await cloud.queue.put(frame({"water": {"value": 210}}, "StateStreamer"))
+    await cloud.drain()
+    await c.async_refresh()
+    assert c.client.stream_fresh
+    assert float(c.system.devices["water"].value) == 21
+
+
+async def test_late_bootstrap_shadow_cannot_overwrite_live_session(hass, entry, cloud):
+    from custom_components.iaqualink_tcx.coordinator import TcxCoordinator
+
+    shadow_started = asyncio.Event()
+    release_shadow = asyncio.Event()
+
+    async def delayed_request(request):
+        if request.url.path.endswith("/shadow"):
+            shadow_started.set()
+            await release_shadow.wait()
+        return cloud.request(request)
+
+    client = cloud.client(**CREDENTIALS)
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(delayed_request))
+    systems = await discover(client)
+    system = systems[SERIAL]
+    system.WS_INITIAL_ACK_TIMEOUT_SECS = 0.001
+    coordinator = TcxCoordinator(hass, entry, client, system)
+    refresh = asyncio.create_task(coordinator.async_refresh())
+    try:
+        await asyncio.wait_for(shadow_started.wait(), timeout=1)
+        await cloud.queue.put(frame({**STATE, "water": {"value": 210, "us": 1}}))
+        await cloud.drain()
+        assert client.stream_active
+        assert float(system.devices["water"].value) == 21
+        cloud.state = {**STATE, "water": {"value": 999, "us": 1}}
+        release_shadow.set()
+        await refresh
+        assert coordinator.equipment_available
+        assert float(system.devices["water"].value) == 21
+        client.last_state = time.monotonic() - 86400
+        system._ws_last_update = time.time() - 86400
+        requests = len(cloud.requests)
+        await coordinator.async_refresh()
+        assert coordinator.equipment_available
+        assert float(system.devices["water"].value) == 21
+        assert len(cloud.requests) == requests
+        assert len(cloud.sent) == 1
+    finally:
+        release_shadow.set()
+        await refresh
+        await coordinator.async_close()
+
+
+async def test_superseded_shadow_retry_is_bounded(acquisition):
+    with patch.object(acquisition.system, "refresh", side_effect=ShadowSuperseded) as refresh:
+        with pytest.raises(UpdateFailed, match="Cloud update failed"):
+            await acquisition._async_update_data()
+    assert refresh.call_count == 2
+    assert not acquisition.equipment_available
+
+
+@pytest.mark.parametrize("state", [{"aws": {"status": "disconnected"}}, {"systemMode": 3}])
+async def test_quiet_session_still_honors_offline_and_service_reports(acquisition, cloud, state):
+    acquisition.client.last_state = time.monotonic() - 86400
+    acquisition.system._ws_last_update = time.time() - 86400
+    await cloud.queue.put(frame(state, "StateStreamer"))
+    await cloud.drain()
+    await acquisition.async_refresh()
+    assert not acquisition.equipment_available
 
 
 async def test_transport_boundary_and_subscription_reuse(acquisition, cloud):

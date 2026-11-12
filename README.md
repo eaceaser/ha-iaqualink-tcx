@@ -72,7 +72,7 @@ not claims that the corresponding hardware is installed.
 | `lvh1` | Heater reported status sensor | Library mapping: off, standby, heating. Reported tile status, not independently measured firing |
 | `auxN` | Auxiliary state binary sensor | Observed relay on/off; stable key used instead of personal equipment label |
 | Color-capable `auxN` | Current effect sensor | Library's named current/locked color mapping; unknown for invalid/unobserved color |
-| Controller | State stream diagnostic sensor | disconnected, waiting, fresh, stale |
+| Controller | State stream diagnostic sensor | disconnected, waiting, fresh, quiet |
 | Controller | Last reported controller status diagnostic sensor | Library status; explicitly a reported value, not proof of live controller reachability |
 
 This release does **not** expose salinity, chlorinator output/boost, measured pump
@@ -82,29 +82,40 @@ No generic device fallback invents telemetry for unknown equipment.
 ## Updates and availability
 
 The coordinator publishes every **30 seconds**. The library reuses one WebSocket
-subscription per selected controller. Recent WS state suppresses REST shadow polls;
-a missing/stale stream permits REST fallback. Startup can wait up to **5 seconds**
-for the first WS state, and REST operations have a **10-second** timeout. Authentication
-may replay a read once. This is honestly classified as **cloud polling**, not an
-immediate push integration.
+subscription per selected controller, with protocol keepalive pings every **30 seconds**.
+Missed pongs cause the transport to close; no extra heartbeat requests are needed.
+Startup can wait up to **5 seconds** for the first WS state, and REST operations have
+a **10-second** timeout. Authentication may replay a read once. This remains **cloud
+polling**, not an immediate push integration.
 
-Equipment requires a successful refresh, controller status `CONNECTED` or `ONLINE`,
-a connected state stream with a state frame less than **120 seconds** old, and all
-required fields observed in the current socket session, including controller status
-and a valid service-mode flag. Disconnect, stale stream,
-offline/unknown/service/firmware-update status, or refresh failure makes equipment
-unavailable. A successful REST shadow fetch alone never makes it live again.
+TCX streams changes rather than periodic measurements. A connected session that has
+received state stays usable when equipment is unchanged. After **120 seconds** without
+a state frame the stream diagnostic becomes **quiet**, not unavailable. `fresh` means
+recent state traffic; `quiet` means the same session is still connected with its
+keepalive watchdog running. Neither proves a new physical temperature sample.
+
+Equipment also requires a successful refresh, controller status `CONNECTED` or
+`ONLINE`, and all required fields observed in the current socket session, including
+controller status and a valid service-mode flag. Disconnect, offline/unknown/service/
+firmware-update status, or refresh failure makes equipment unavailable. A successful
+REST shadow fetch alone never makes it live again. The first usable session state
+suppresses age-based REST fallback so an idle connection cannot overwrite its
+readings with an older cloud shadow. Before session state arrives, the upstream
+bootstrap/REST fallback remains enabled. A fallback response arriving after WS state
+is discarded before it can overwrite that state.
+
 Recovery normally appears on the next 30-second tick. The upstream library retries
 a failed subscription on refresh and has no automatic exponential WS backoff.
-A stale connected stream may incur the 5-second initial-state wait before REST.
-The library can briefly reuse its previous freshness timestamp after reconnect;
-the integration's separate session gate still rejects previous-session readings.
+Reconnecting clears the integration's observed-field metadata, so a partial delta
+cannot promote readings or controller status retained from the previous session.
+Partial updates within one session preserve prior fields; newly appearing equipment
+is added without a reload. Diagnostics remain available during equipment outages.
 
-Partial stream updates preserve prior fields in the same session; newly appearing
-equipment is added without a reload. A fresh frame proves recent cloud traffic,
-**not that every field was physically sampled recently**: the library exposes no
-per-field measurement timestamp. The conservative gate may hide usable readings
-when the cloud sends no state frames for two minutes. Diagnostics remain available.
+The heartbeat validates **HA-to-cloud transport**, not the controller-to-cloud link.
+The latter relies on the controller status reported by the vendor. The library
+exposes no per-field physical measurement timestamps or separate controller heartbeat;
+if the vendor silently stops forwarding controller updates without reporting a
+status change, HA cannot independently detect that failure.
 
 ## Upgrade, remove, and troubleshoot
 

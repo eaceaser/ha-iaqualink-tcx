@@ -10,11 +10,15 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 
 from iaqualink.client import AqualinkClient
-from iaqualink.systems.tcx.system import TcxSystem
+from iaqualink.systems.tcx.system import TCX_SHADOW_URL, TcxSystem
 
-from .const import STALE_SECONDS
+from .const import QUIET_SECONDS
 
 _VENDOR_IO = ContextVar("tcx_vendor_io", default=False)
+
+
+class ShadowSuperseded(Exception):
+    """A live session superseded an in-flight cached REST shadow read."""
 
 
 class _PrivacyFilter(logging.Filter):
@@ -58,12 +62,13 @@ class TcxClient(AqualinkClient):
         self.observed_fields: dict[str, set[str]] = {}
 
     @property
+    def stream_active(self):
+        """State was observed on this still-connected, keepalive-protected session."""
+        return self.stream_connected and self.last_state is not None
+
+    @property
     def stream_fresh(self):
-        return (
-            self.stream_connected
-            and self.last_state is not None
-            and time.monotonic() - self.last_state < STALE_SECONDS
-        )
+        return self.stream_active and time.monotonic() - self.last_state < QUIET_SECONDS
 
     @asynccontextmanager
     async def ws_connect(self, url, **kwargs):
@@ -136,7 +141,18 @@ class TcxClient(AqualinkClient):
             raise RuntimeError("Equipment requests are disabled")
         token = _VENDOR_IO.set(True)
         try:
-            return await super().send_request(url, method, **kwargs)
+            response = await super().send_request(url, method, **kwargs)
+            if (
+                method.lower() == "get"
+                and url.startswith(f"{TCX_SHADOW_URL}/")
+                and url.endswith("/shadow")
+                and self.stream_active
+            ):
+                # A bootstrap/reconnect REST read may already be in flight
+                # when the first WS state arrives. Do not let its cached
+                # response overwrite that session's newer state upstream.
+                raise ShadowSuperseded
+            return response
         finally:
             _VENDOR_IO.reset(token)
 

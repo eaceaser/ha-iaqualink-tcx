@@ -9,7 +9,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from iaqualink.exception import AqualinkServiceUnauthorizedException
 from iaqualink.system import SystemStatus
 
-from .const import DOMAIN, UPDATE_SECONDS
+from .client import ShadowSuperseded
+from .const import DOMAIN, QUIET_SECONDS, UPDATE_SECONDS
 
 LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class TcxCoordinator(DataUpdateCoordinator):
             not self.closed
             and self.refresh_ok
             and self.last_update_success
-            and self.client.stream_fresh
+            and self.client.stream_active
             and "status" in self.client.observed_fields.get("aws", set())
             and "systemMode" in self.client.observed_fields
             and self.system.status in (SystemStatus.CONNECTED, SystemStatus.ONLINE)
@@ -49,7 +50,25 @@ class TcxCoordinator(DataUpdateCoordinator):
 
     async def _refresh(self):
         try:
-            await self.system.refresh()
+            # TCX sends changes, not periodic state samples. Once THIS session
+            # has state, retain it while upstream's WS ping/pong watchdog keeps
+            # the socket alive. Otherwise an idle connection's REST fallback
+            # can replace live session data with an older cloud shadow.
+            # This is the upstream engine's public freshness-policy setting;
+            # leave its bootstrap/reconnect fallback in place without state.
+            self.system.WS_STATE_FRESH_SECS = (
+                float("inf") if self.client.stream_active else QUIET_SECONDS
+            )
+            try:
+                await self.system.refresh()
+            except ShadowSuperseded:
+                # The response was discarded before upstream parsed it. One
+                # bounded retry re-derives status from the live WS cache; the
+                # active-session gate skips REST and reuses the subscription.
+                self.system.WS_STATE_FRESH_SECS = (
+                    float("inf") if self.client.stream_active else QUIET_SECONDS
+                )
+                await self.system.refresh()
         except AqualinkServiceUnauthorizedException:
             self.refresh_ok = False
             raise ConfigEntryAuthFailed("Cloud authentication failed") from None

@@ -114,3 +114,38 @@ physical measurement freshness, hardware readings, or actual hardware/app coexis
 was tested. Cloud state arrival does not establish per-field physical sample age.
 The upstream TCX implementation still carries protocol uncertainty; changing the
 pin requires repeating boundary and stock-image tests, not merely updating metadata.
+
+## Quiet-stream telemetry fix — 2026-11-11
+
+Follow-up to the first live installation: unchanged equipment produced a connected
+but quiet stream, and the original 120-second state-frame age guard incorrectly
+made all equipment unavailable. The fix separates session availability from recent
+state traffic. Existing upstream 30-second protocol pings detect transport failure;
+a quiet initialized connection retains only readings observed during that session.
+The diagnostic state changes from `stale` to `quiet` after 120 seconds. Controller
+status, service mode, per-reading field observation and disconnect guards remain.
+
+While a session has state, the upstream public freshness policy suppresses idle
+REST fallback, preserving stream readings instead of overwriting them with a cached
+shadow. Both independent `gpt-6.1-sol` high-reasoning reviewers reproduced a P2 race:
+a bootstrap REST response could complete after the first WS state and replace it.
+The public transport boundary now discards such a response before upstream parses
+it; one bounded public refresh restores status from the WS cache. Both reviewers
+rechecked this fix, independently passed all 55 tests and Ruff, and reported no
+remaining findings. Review scope was the complete follow-up runtime/test diff
+against `efb494f`, including the new heartbeat test.
+
+Final local and stock HA 2026.11.0 checks: **55 tests passed**, Ruff lint/format
+passed, and actual HA config-flow/platform setup, late discovery, unload, reload
+and shutdown smoke checks passed. The dependency and stock image pin are unchanged.
+New regressions cover a 24-hour quiet interval without REST requests or new
+subscriptions, offline/service-mode pushes, delayed REST/WS overlap, bounded retry,
+and actual HTTPX-WS/wsproto ping/pong handling over an in-memory transport, including
+missing-pong closure and recovery. Tests use synthetic data and blocked sockets.
+The standard custom-integration warning and HA/aiohttp deprecation remain expected.
+
+No running HA changes, controller operations or live account requests were made for
+this fix. A cloud transport heartbeat cannot independently detect a controller or
+subscription that silently stops reporting while the cloud continues answering
+pings. Physical sample age and that vendor-side failure mode remain unverified;
+the integration continues to rely on reported controller status for that link.

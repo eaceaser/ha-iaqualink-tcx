@@ -58,4 +58,4 @@ class TcxDiagnostic(TcxEntity, SensorEntity):
             return "disconnected"
         if client.last_state is None:
             return "waiting"
-        return "fresh" if client.stream_fresh else "stale"
+        return "fresh" if client.stream_fresh else "quiet"

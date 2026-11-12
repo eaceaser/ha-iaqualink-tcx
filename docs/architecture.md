@@ -17,9 +17,20 @@ The library lacks a public consumer freshness API. Instead of monkeypatching WS
 internals, the client overrides public `ws_connect()` to observe connection lifetime
 and uses public `ws_capture_hook` to observe state arrival and field presence. It
 recognizes the two reported-state envelopes accepted by the pinned library but
-retains **no payload values**. Values and status parsing remain upstream. Freshness
-is session-local, measured with a monotonic clock, and rejects disconnected cached
-REST shadows. Controller status and a valid service-mode flag must also be observed in the current
+retains **no payload values**. Values and status parsing remain upstream. Session state
+is gated by the connected socket lifetime and rejects disconnected cached REST
+shadows. A monotonic state-arrival clock distinguishes recent traffic from quiet
+periods; quiet is diagnostic, not an equipment timeout. Upstream protocol pings
+every 30 seconds detect lost transport without depending on equipment changes.
+Before each refresh, the public `WS_STATE_FRESH_SECS` policy is unlimited only
+when this session has observed state; otherwise its 120-second bootstrap/fallback
+policy applies. This prevents quiet-session REST fallback from replacing stream
+readings with a cached shadow, without touching private receive-loop internals.
+Pongs are not state samples and do not advance the state-arrival clock. A bootstrap
+REST response that completes after this session receives state is rejected at the
+public transport boundary before upstream can apply it. One bounded public refresh
+then derives status from the stream cache, avoiding both stale-shadow contamination
+and unnecessary subscription churn. Controller status and a valid service-mode flag must also be observed in the current
 session, so a reconnect delta cannot promote an old cached status. Reading fields
 must appear in this session; partial updates preserve
 previous presence. Temperature additionally requires a valid observed unit flag.

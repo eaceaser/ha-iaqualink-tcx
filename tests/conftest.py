@@ -84,6 +84,7 @@ class Cloud:
         self.clients = []
         self.status = 200
         self.sockets = 0
+        self.connect_options = []
 
     def request(self, request):
         self.requests.append(request)
@@ -107,6 +108,7 @@ class Cloud:
     @asynccontextmanager
     async def connect(self, *args, **kwargs):
         cloud = self
+        cloud.connect_options.append(kwargs)
         cloud.sockets += 1
 
         class Socket:
