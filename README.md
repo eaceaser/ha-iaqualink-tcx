@@ -90,7 +90,8 @@ immediate push integration.
 
 Equipment requires a successful refresh, controller status `CONNECTED` or `ONLINE`,
 a connected state stream with a state frame less than **120 seconds** old, and all
-required fields observed in the current socket session. Disconnect, stale stream,
+required fields observed in the current socket session, including controller status
+and a valid service-mode flag. Disconnect, stale stream,
 offline/unknown/service/firmware-update status, or refresh failure makes equipment
 unavailable. A successful REST shadow fetch alone never makes it live again.
 Recovery normally appears on the next 30-second tick. The upstream library retries

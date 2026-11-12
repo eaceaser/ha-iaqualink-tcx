@@ -199,3 +199,28 @@ async def test_protocol_logs_are_private_without_hiding_unrelated_traffic(cloud,
     ):
         assert secret not in caplog.text
     assert "Unrelated request remains visible" in caplog.text
+
+
+async def test_reconnect_delta_cannot_promote_cached_controller_status(acquisition, cloud):
+    c = acquisition
+    await cloud.queue.put(ConnectionError("synthetic-drop"))
+    await cloud.drain()
+    # First state on the new socket is a partial delta, not a full bootstrap.
+    await cloud.queue.put(
+        frame({"tempSetting": 0, "water": {"value": 100, "us": 1}}, "StateStreamer")
+    )
+    await c.async_refresh()
+    assert c.client.stream_fresh
+    assert not c.equipment_available
+    await cloud.queue.put(frame({"aws": {"status": "connected"}, "systemMode": 0}, "StateStreamer"))
+    await cloud.drain()
+    await c.async_refresh()
+    assert c.equipment_available
+
+
+@pytest.mark.parametrize("mode", [None, "normal", True, -1])
+async def test_invalid_service_mode_blocks_equipment(acquisition, cloud, mode):
+    await cloud.queue.put(frame({"systemMode": mode}, "StateStreamer"))
+    await cloud.drain()
+    await acquisition.async_refresh()
+    assert not acquisition.equipment_available

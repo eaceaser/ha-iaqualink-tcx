@@ -176,3 +176,18 @@ async def test_invalid_unit_makes_temperature_unavailable(acquisition, cloud, un
     await push(acquisition, cloud, {"tempSetting": 1})
     assert entities(acquisition)["water_temperature"].native_unit_of_measurement == "°F"
     assert entities(acquisition)["water_temperature"].native_value == 0
+
+
+@pytest.mark.parametrize("enabled", [False, None, "false", 2])
+async def test_solar_configuration_must_remain_enabled(acquisition, cloud, enabled):
+    await push(acquisition, cloud, {"TspBdy0": {"solarEn": True}, "solar": {"value": 300, "us": 1}})
+    solar = entities(acquisition)["solar_temperature"]
+    assert solar.available
+    assert solar.native_value == 30
+    await push(acquisition, cloud, {"TspBdy0": {"solarEn": enabled}})
+    assert not solar.available
+    assert solar.native_value is None
+    await push(acquisition, cloud, {"TspBdy0": {"solarEn": True}})
+    assert solar.available
+    acquisition.client.observed_fields["TspBdy0"].discard("solarEn")
+    assert not solar.available

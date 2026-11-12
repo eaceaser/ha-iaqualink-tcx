@@ -19,7 +19,9 @@ and uses public `ws_capture_hook` to observe state arrival and field presence. I
 recognizes the two reported-state envelopes accepted by the pinned library but
 retains **no payload values**. Values and status parsing remain upstream. Freshness
 is session-local, measured with a monotonic clock, and rejects disconnected cached
-REST shadows. Required fields must appear in this session; partial updates preserve
+REST shadows. Controller status and a valid service-mode flag must also be observed in the current
+session, so a reconnect delta cannot promote an old cached status. Reading fields
+must appear in this session; partial updates preserve
 previous presence. Temperature additionally requires a valid observed unit flag.
 This small metadata adapter is isolated in `client.py`; it is not a second protocol
 client. A public upstream health/presence API could eventually replace it.

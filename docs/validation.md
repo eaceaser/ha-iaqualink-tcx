@@ -35,7 +35,8 @@ is unsupported and documented, not treated as package isolation by domain.
 
 ## Results
 
-- Ruff check and formatting pass.
+- Ruff check and formatting pass; **49 focused tests pass** locally and in the
+  fresh stock HA image.
 - Focused pytest suite covers TCX filtering, controller selection, duplicate helper,
   reauth, auth/setup errors, client closure, real upstream WS bootstrap/subscription
   reuse through mocked transport, disconnect/REST cache rejection/recovery, close
@@ -49,12 +50,24 @@ is unsupported and documented, not treated as package isolation by domain.
 - Official hassfest image passes: **1 integration, 0 invalid integrations**.
   Image digest:
   `sha256:da6522993280166fe072704989a2b4c33e639e8ceb69c8ab6ad7ec5045c1a1e3`.
-- Official HACS action was invoked locally. It exits before validation with
+- Official pinned HACS manifest schemas and actual brand validator pass against
+  local files, with networking disabled. Reproduce with:
+
+  ```sh
+  docker run --rm --network none --entrypoint python -e PYTHONPATH=/hacs \
+    -v "$PWD:/github/workspace:ro" \
+    ghcr.io/hacs/action@sha256:187499a09c5d41f9f0d42ff80d203ed87b974c028290140913b61e005fb0aab2 \
+    /github/workspace/scripts/hacs_local_check.py
+  ```
+
+- The full official HACS action was invoked locally. It exits before validation with
   **“No GitHub token found”**. Authenticated remote repository validation is pending;
   it must inspect the published branch, and these changes have not been pushed.
   `.github/workflows/validate.yml` provides that check using the workflow's read-only
-  token, with comments disabled. Local layout includes one integration, English
-  translations, version/issue metadata, `hacs.json`, and original brand assets.
+  token through the action image’s actual `INPUT_GITHUB_TOKEN` variable and pins
+  `REPOSITORY_REF` to the checked-out GitHub SHA. The container does not post comments.
+  Local layout includes one integration, English translations, version/issue metadata,
+  `hacs.json`, and original brand assets inside the integration directory.
   HACS image digest:
   `sha256:187499a09c5d41f9f0d42ff80d203ed87b974c028290140913b61e005fb0aab2`.
 
@@ -84,8 +97,17 @@ live equipment or modify files.
    reviewers rechecked the resulting tree and passed all 40 tests. No remaining
    findings. Later stock smoke updated setup/unload to HA 2026.11's `None` return
    and `async_unload_platforms_or_raise` convention; the final gate reviews this too.
-3. **Release candidate**: final entire-tree review and any follow-up findings are
-   recorded below after completion.
+3. **Release candidate**, `fbd9223` plus reviewed follow-up fixes: both reviewers
+   reproduced a reconnect delta promoting cached controller status without current
+   session status/service-mode fields. Added explicit current-session status and
+   valid service-mode gating, with reconnect and malformed-mode regressions. The
+   quality reviewer also found the pinned HACS validator requires brand assets
+   inside the integration directory; moved original assets there. The quality
+   reviewer additionally reproduced a disabled solar sensor retaining its prior
+   value; added valid current-session solar-enable gating and regressions. Both
+   reviewers rechecked all runtime fixes and independently passed 49 tests with no
+   remaining findings. The local HACS schema/brand subset also passes; full remote
+   HACS validation remains pending as described above.
 
 Remaining verification limits: no real credentials, live WS delta confirmation,
 physical measurement freshness, hardware readings, or actual hardware/app coexistence

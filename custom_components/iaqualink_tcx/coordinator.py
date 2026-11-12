@@ -32,9 +32,12 @@ class TcxCoordinator(DataUpdateCoordinator):
     @property
     def equipment_available(self):
         return (
-            self.refresh_ok
+            not self.closed
+            and self.refresh_ok
             and self.last_update_success
             and self.client.stream_fresh
+            and "status" in self.client.observed_fields.get("aws", set())
+            and "systemMode" in self.client.observed_fields
             and self.system.status in (SystemStatus.CONNECTED, SystemStatus.ONLINE)
         )
 

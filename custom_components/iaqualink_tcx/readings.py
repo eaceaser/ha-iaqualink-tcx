@@ -62,6 +62,15 @@ class Reading:
             return None
 
     def observed(self, client, system):
+        if self.key == "solar":
+            body = system.devices.get("TspBdy0")
+            enabled = body.data.get("solarEn") if body is not None else None
+            if (
+                "solarEn" not in client.observed_fields.get("TspBdy0", set())
+                or type(enabled) not in (bool, int)
+                or enabled != 1
+            ):
+                return False
         required = self.fields
         if self.suffix == "effect":
             color = "lockClr" if system.devices[self.key].data.get("statClr") == 6 else "currClr"

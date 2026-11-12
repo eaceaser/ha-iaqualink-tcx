@@ -109,6 +109,9 @@ class TcxClient(AqualinkClient):
                 continue
             changed = True
             for key, value in tree.items():
+                if key == "systemMode" and (type(value) is not int or value < 0):
+                    self.observed_fields.pop(key, None)
+                    continue
                 if key == "tempSetting" and (type(value) is not int or value not in (0, 1)):
                     self.observed_fields.pop(key, None)
                     continue
