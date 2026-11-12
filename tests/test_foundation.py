@@ -116,11 +116,11 @@ async def test_setup_unload(hass, entry, cloud):
     with (
         patch("custom_components.iaqualink_tcx.TcxClient", cloud.client),
         patch.object(hass.config_entries, "async_forward_entry_setups", AsyncMock()),
-        patch.object(hass.config_entries, "async_unload_platforms", AsyncMock(return_value=True)),
+        patch.object(hass.config_entries, "async_unload_platforms_or_raise", AsyncMock()),
     ):
-        assert await async_setup_entry(hass, entry)
+        assert await async_setup_entry(hass, entry) is None
         assert cloud.sockets == 1
-        assert await async_unload_entry(hass, entry)
+        assert await async_unload_entry(hass, entry) is None
         assert entry.runtime_data.closed
         assert cloud.sockets == 0
 

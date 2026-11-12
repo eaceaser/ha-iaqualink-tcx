@@ -109,6 +109,9 @@ class TcxClient(AqualinkClient):
                 continue
             changed = True
             for key, value in tree.items():
+                if key == "tempSetting" and (type(value) is not int or value not in (0, 1)):
+                    self.observed_fields.pop(key, None)
+                    continue
                 self.observed_fields.setdefault(key, set()).update(
                     value if isinstance(value, dict) else {"__scalar"}
                 )

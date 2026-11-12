@@ -44,7 +44,7 @@ class TcxEntity(CoordinatorEntity):
     @property
     def available(self):
         return self.coordinator.equipment_available and self.reading.observed(
-            self.coordinator.client
+            self.coordinator.client, self.coordinator.system
         )
 
     def reading_value(self):

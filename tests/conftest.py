@@ -132,7 +132,13 @@ class Cloud:
 @pytest.fixture
 async def cloud():
     cloud = Cloud()
-    with patch("iaqualink.client.aconnect_ws", cloud.connect):
+    with (
+        patch("iaqualink.client.aconnect_ws", cloud.connect),
+        patch("socket.socket.connect", side_effect=AssertionError("Offline test blocked network")),
+        patch(
+            "socket.socket.connect_ex", side_effect=AssertionError("Offline test blocked network")
+        ),
+    ):
         yield cloud
     for client in cloud.clients:
         await client.close()

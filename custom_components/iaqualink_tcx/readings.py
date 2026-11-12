@@ -34,6 +34,7 @@ class Reading:
     def value(self, system):
         try:
             device = system.devices[self.key]
+            source_device = system.devices.get(self.source, device)
             numeric_fields = {
                 "value",
                 "waterTempSet",
@@ -45,7 +46,7 @@ class Reading:
                 "prmDur",
             }
             if self.kind in ("temperature", "number") and any(
-                isinstance(device.data.get(field), bool)
+                isinstance(source_device.data.get(field), bool)
                 for field in self.fields
                 if field in numeric_fields
             ):
@@ -60,9 +61,13 @@ class Reading:
         except (KeyError, ValueError, TypeError, OverflowError, AttributeError, IndexError):
             return None
 
-    def observed(self, client):
+    def observed(self, client, system):
+        required = self.fields
+        if self.suffix == "effect":
+            color = "lockClr" if system.devices[self.key].data.get("statClr") == 6 else "currClr"
+            required = (*required, color)
         fields = client.observed_fields.get(self.source or self.key, set())
-        return all(field in fields for field in self.fields) and (
+        return all(field in fields for field in required) and (
             self.kind != "temperature" or "tempSetting" in client.observed_fields
         )
 
@@ -88,6 +93,16 @@ def _heater_status(device):
     return device.value if type(raw) is int and raw >= 0 else None
 
 
+def _percentage(device):
+    raw = [device.data.get(k) for k in ("cmdSpd", "minSpd", "maxSpd")]
+    if any(isinstance(v, bool) or v is None for v in raw):
+        return None
+    cmd, low, high = map(float, raw)
+    if not all(math.isfinite(v) for v in (cmd, low, high)) or cmd < 0 or low < 0 or high <= low:
+        return None
+    return device.percentage
+
+
 def inventory(system):
     """Discover explicit known readings; no generic fallback or controls."""
     for key, device in list(system.devices.items()):
@@ -102,13 +117,18 @@ def inventory(system):
             )
         elif isinstance(device, (TcxFilterPump, TcxAuxSwitch, TcxAuxLight)):
             yield Reading(key, "state", f"{key.upper()} state", _state, ("st",), kind="binary")
-            if isinstance(device, TcxAuxLight):
+            if isinstance(device, TcxAuxLight) or device.data.get("et") in (
+                "JL",
+                "IB",
+                "PSS",
+                "HU",
+            ):
                 yield Reading(
                     key,
                     "effect",
                     f"{key.upper()} effect",
-                    lambda d: d.effect,
-                    ("et", "statClr", "currClr"),
+                    lambda d: TcxAuxLight(d.system, d.data).effect,
+                    ("et", "statClr"),
                 )
         elif isinstance(device, TcxClimate):
             yield Reading(
@@ -139,7 +159,7 @@ def inventory(system):
                 key,
                 "percentage",
                 "Pump commanded speed",
-                lambda d: d.percentage,
+                _percentage,
                 ("cmdSpd", "minSpd", "maxSpd"),
                 kind="number",
                 unit="%",
@@ -166,7 +186,7 @@ def inventory(system):
                 key,
                 "configured",
                 f"Pump configured {labels[field]}",
-                lambda d: d.current_value,
+                lambda d: type(d)(d.system, d.system.devices["ecm0"].data).current_value,
                 (field,),
                 source="ecm0",
                 kind="number",

@@ -150,3 +150,29 @@ async def test_no_writable_platforms_or_services(acquisition, cloud):
         _ = entity.available
         _ = entity.is_on if isinstance(entity, TcxBinarySensor) else entity.native_value
     assert len(cloud.sent) == before
+
+
+async def test_configured_speed_null_does_not_reuse_synthetic_cache(acquisition, cloud):
+    await push(acquisition, cloud, {"ecm0": {"minSpd": None}})
+    assert entities(acquisition)["ecm0_minSpd_configured"].native_value is None
+
+
+async def test_late_aux_type_and_locked_color(acquisition, cloud):
+    await push(acquisition, cloud, {"aux1": {"st": 0}})
+    assert "aux1_effect" not in entities(acquisition)
+    await push(acquisition, cloud, {"aux1": {"et": "JL", "statClr": 6, "lockClr": 2}})
+    assert entities(acquisition)["aux1_effect"].native_value == "Sky Blue"
+    # A new session must observe the chosen color field, even if the old
+    # library object still retains that field from its previous connection.
+    acquisition.client.observed_fields["aux1"].discard("lockClr")
+    acquisition.client.observed_fields["aux1"].add("currClr")
+    assert not entities(acquisition)["aux1_effect"].available
+
+
+@pytest.mark.parametrize("unit", [None, 2, "C", True])
+async def test_invalid_unit_makes_temperature_unavailable(acquisition, cloud, unit):
+    await push(acquisition, cloud, {"tempSetting": unit})
+    assert not entities(acquisition)["water_temperature"].available
+    await push(acquisition, cloud, {"tempSetting": 1})
+    assert entities(acquisition)["water_temperature"].native_unit_of_measurement == "°F"
+    assert entities(acquisition)["water_temperature"].native_value == 0

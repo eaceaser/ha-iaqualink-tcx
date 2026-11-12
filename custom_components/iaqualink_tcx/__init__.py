@@ -34,11 +34,8 @@ async def async_setup_entry(hass, entry):
     entry.async_on_unload(
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, coordinator.async_close)
     )
-    return True
 
 
 async def async_unload_entry(hass, entry):
-    if await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        await entry.runtime_data.async_close()
-        return True
-    return False
+    await hass.config_entries.async_unload_platforms_or_raise(entry, PLATFORMS)
+    await entry.runtime_data.async_close()

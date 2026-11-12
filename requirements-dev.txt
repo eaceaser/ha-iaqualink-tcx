@@ -1,0 +1,5 @@
+homeassistant==2026.11.0
+iaqualink @ git+https://github.com/flz/iaqualink-py.git@565b93d019077007a88bca57f5b2a253332be929
+pytest==9.2.0
+pytest-asyncio==1.4.1.post1
+ruff==0.17.4

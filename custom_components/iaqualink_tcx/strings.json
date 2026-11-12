@@ -1,0 +1,31 @@
+{
+  "title": "AquaLink TCX",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to iAquaLink",
+        "description": "Enter your iAquaLink credentials for read-only TCX monitoring. Continue using the iAquaLink app to control equipment.",
+        "data": {"username": "Email", "password": "Password"}
+      },
+      "controller": {
+        "title": "Choose a TCX controller",
+        "data": {"serial": "Controller"}
+      },
+      "reauth_confirm": {
+        "title": "Reconnect to iAquaLink",
+        "description": "Enter credentials for an account that includes this TCX controller.",
+        "data": {"username": "Email", "password": "Password"}
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid iAquaLink credentials.",
+      "cannot_connect": "Unable to connect to the iAquaLink cloud. Try again later.",
+      "controller_missing": "This account does not include the configured TCX controller. Use the original account or add the controller as a separate integration entry."
+    },
+    "abort": {
+      "already_configured": "This TCX controller is already configured.",
+      "no_tcx": "No AquaLink TCX controllers were found in this account.",
+      "reauth_successful": "Reauthentication was successful."
+    }
+  }
+}
